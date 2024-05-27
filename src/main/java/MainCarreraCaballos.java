@@ -57,7 +57,7 @@ public class MainCarreraCaballos {
             System.out.println("Pozo en la posición " + pozo.getPosicion());
         }
 
-        Carrera carrera = new Carrera (caballos,pozos);
+        Carrera carrera = new Carrera (caballos);
         carrera.iniciarcarrera();
     }
 
@@ -68,23 +68,24 @@ public class MainCarreraCaballos {
         Thread hiloPotenciador;
 
 
-        public Carrera(List<Caballo> caballos,List<Pozo> pozos){
+        public Carrera(List<Caballo> caballos){
             this.semaforoCarrera = new Semaphore(-2);
             Potenciador potenciador = new Potenciador();
-            hiloPotenciador = new Thread(potenciador);
-            hiloPotenciador.setDaemon(true);
+            hiloPotenciador = Thread.ofPlatform().daemon(true).unstarted(potenciador);
 
-            for(Caballo c : caballos){
-                c.setPotenciador(potenciador);
-                c.setSemaforo(semaforoCarrera);
-                hilosCaballos.add(new Thread(c));
-            }
-
-            //Segun el # procesadores uso hilos daemon o no.
+            //Segun el # procesadores uso hilos virtuales o no.
             int procesadores = Runtime.getRuntime().availableProcessors();
-            if(caballos.size() > procesadores){
-                for (Thread hc : hilosCaballos) {
-                    hc.setDaemon(true);
+            if (caballos.size() > procesadores) {
+                for(Caballo c : caballos){
+                    c.setPotenciador(potenciador);
+                    c.setSemaforo(semaforoCarrera);
+                    hilosCaballos.add(Thread.ofVirtual().unstarted(c));
+                }
+            }else{
+                for(Caballo c : caballos){
+                    c.setPotenciador(potenciador);
+                    c.setSemaforo(semaforoCarrera);
+                    hilosCaballos.add(Thread.ofPlatform().unstarted(c));
                 }
             }
         }
@@ -103,7 +104,7 @@ public class MainCarreraCaballos {
         }
         private void finalizarCarrera(){
             for(Thread hc : hilosCaballos){
-                if(hc.isAlive() && !hc.isDaemon()){
+                if(hc.isAlive() && !hc.isVirtual()){
                     hc.interrupt();
                 }
             }
@@ -138,10 +139,8 @@ public class MainCarreraCaballos {
             }
         }
 
-        private void potenciarCaballo(Caballo caballo){
-            synchronized (this){
-                caballo.bonusPotenciador();
-            }
+        private int potenciarCaballo(){
+            return DISTANCIA_POTENCIADOR;
         }
 
 
@@ -221,13 +220,14 @@ public class MainCarreraCaballos {
                     System.exit(0);
                 }
                 avanzar();
+
+                checkCaballoCaeEnpozo();
+                checkCaballoPasaPorPotenciador();
+                rescatarCaballo();
                 if(posicion.get()  >= DISTANCIA_CARRERA){
                     cruzarMeta();
                     break;
                 }
-                checkCaballoCaeEnpozo();
-                checkCaballoPasaPorPotenciador();
-                rescatarCaballo();
                 descansar();
             }
         }
@@ -247,10 +247,6 @@ public class MainCarreraCaballos {
         private void avanzar(){
             posicion.getAndAdd(velocidad * random.nextInt(10) +1);
             System.out.printf(nombre+ " avanza " + posicion + " metros.\n");
-        }
-
-        public void bonusPotenciador(){
-            posicion.getAndAdd(DISTANCIA_POTENCIADOR);
         }
 
         private void descansar(){
@@ -314,7 +310,7 @@ public class MainCarreraCaballos {
                         }
                         potenciador.ocuparPotenciador();
                         Thread.sleep(7000);
-                        posicion.getAndAdd(100);
+                        posicion.getAndAdd(potenciador.potenciarCaballo());
                         System.out.println(nombre + " pasó por el área potenciadora en la posición " + potenciador.getPosicion() + " y avanzó " + DISTANCIA_POTENCIADOR +" metros, lleva " + posicion.get() + " metros.");
                     } catch (InterruptedException ignored) {
                     } finally {
